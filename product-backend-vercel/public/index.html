@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Analytics Hunter</title>
+<style>
+  :root {
+    --bg: #f7f8fa;
+    --surface: #ffffff;
+    --text: #1a1a1a;
+    --muted: #6b7280;
+    --border: #e5e7eb;
+    --accent: #2563eb;
+    --accent-hover: #1d4ed8;
+    --tag-low: #16a34a;
+    --tag-high: #dc2626;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  header {
+    position: sticky;
+    top: 0;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 24px;
+    z-index: 10;
+  }
+  header h1 {
+    margin: 0 0 12px 0;
+    font-size: 20px;
+  }
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+  }
+  input, select, button {
+    font-size: 14px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+  }
+  input[type="text"] {
+    flex: 1;
+    min-width: 200px;
+  }
+  button {
+    cursor: pointer;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    font-weight: 600;
+  }
+  button:hover { background: var(--accent-hover); }
+  button.secondary {
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+  button.secondary:hover { background: var(--bg); }
+  #status-bar {
+    padding: 8px 24px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  #grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 16px;
+    padding: 16px 24px;
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .card img {
+    width: 100%;
+    height: 160px;
+    object-fit: cover;
+    background: var(--bg);
+  }
+  .card-body {
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: 1;
+  }
+  .card-title {
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .card-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .card-price {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .card-source {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: var(--bg);
+    color: var(--muted);
+  }
+  .card a.view-btn {
+    margin-top: auto;
+    text-align: center;
+    text-decoration: none;
+    display: block;
+  }
+  #load-more-wrap {
+    display: flex;
+    justify-content: center;
+    padding: 24px;
+  }
+  #empty-state, #error-state {
+    padding: 40px 24px;
+    text-align: center;
+    color: var(--muted);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1115;
+      --surface: #1a1d23;
+      --text: #f2f2f2;
+      --muted: #9ca3af;
+      --border: #2a2d34;
+    }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Analytics Hunter</h1>
+  <div class="controls">
+    <input type="text" id="search-input" placeholder="Search products…" />
+    <select id="category-select">
+      <option value="">All categories</option>
+      <option value="electronics">Electronics</option>
+      <option value="fashion">Fashion</option>
+      <option value="home decor">Home</option>
+      <option value="kitchen">Kitchen</option>
+      <option value="toys">Toys</option>
+      <option value="beauty">Beauty</option>
+      <option value="sports equipment">Sports</option>
+      <option value="shoes">Shoes</option>
+      <option value="furniture">Furniture</option>
+      <option value="watches">Watches</option>
+    </select>
+    <select id="sort-select">
+      <option value="relevance">Sort: Relevance</option>
+      <option value="price-asc">Price: Low to High</option>
+      <option value="price-desc">Price: High to Low</option>
+      <option value="title-asc">Name: A–Z</option>
+    </select>
+    <button id="search-btn">Search</button>
+    <button id="refresh-btn" class="secondary">Refresh</button>
+  </div>
+</header>
+
+<div id="status-bar">Loading…</div>
+<div id="grid"></div>
+<div id="empty-state" style="display:none;">No products found. Try a different search or category.</div>
+<div id="error-state" style="display:none;"></div>
+<div id="load-more-wrap">
+  <button id="load-more-btn" class="secondary">Load more</button>
+</div>
+
+<script>
+// ---- Config ----
+// Optional: a Shopify store domain to include alongside eBay results.
+// Leave blank to search eBay only.
+const SHOPIFY_STORE = ""; // e.g. "your-store.myshopify.com"
+const PAGE_SIZE = 48; // products fetched per "page" of results
+
+// ---- State ----
+let currentQuery = "";
+let currentCategory = "";
+let currentSort = "relevance";
+let allProducts = [];
+let offset = 0;
+let isHomepageMode = true;
+
+const grid = document.getElementById("grid");
+const statusBar = document.getElementById("status-bar");
+const emptyState = document.getElementById("empty-state");
+const errorState = document.getElementById("error-state");
+const loadMoreWrap = document.getElementById("load-more-wrap");
+
+function formatPrice(price, currency) {
+  if (price == null) return "";
+  const symbol = currency === "USD" || !currency ? "$" : currency + " ";
+  return `${symbol}${price.toFixed(2)}`;
+}
+
+function sortProducts(products) {
+  const sorted = [...products];
+  if (currentSort === "price-asc") sorted.sort((a, b) => a.price - b.price);
+  else if (currentSort === "price-desc") sorted.sort((a, b) => b.price - a.price);
+  else if (currentSort === "title-asc") sorted.sort((a, b) => a.title.localeCompare(b.title));
+  return sorted;
+}
+
+function renderCard(p) {
+  const card = document.createElement("div");
+  card.className = "card";
+  card.innerHTML = `
+    <img src="${p.image}" alt="${escapeHtml(p.title)}" loading="lazy"
+         onerror="this.style.display='none'" />
+    <div class="card-body">
+      <div class="card-title">${escapeHtml(p.title)}</div>
+      <div class="card-meta">
+        <span class="card-price">${formatPrice(p.price, p.currency)}</span>
+        <span class="card-source">${escapeHtml(p.source)}</span>
+      </div>
+      <a class="view-btn" href="${p.url}" target="_blank" rel="noopener noreferrer">
+        <button style="width:100%;">View product</button>
+      </a>
+    </div>
+  `;
+  return card;
+}
+
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function renderAll() {
+  grid.innerHTML = "";
+  const sorted = sortProducts(allProducts);
+  sorted.forEach((p) => grid.appendChild(renderCard(p)));
+  emptyState.style.display = sorted.length === 0 ? "block" : "none";
+  loadMoreWrap.style.display = sorted.length === 0 ? "none" : "flex";
+}
+
+function buildUrl(baseOffset) {
+  const q = currentQuery || currentCategory;
+  if (!q) {
+    const params = new URLSearchParams({ limit: String(PAGE_SIZE + baseOffset) });
+    if (SHOPIFY_STORE) params.set("store", SHOPIFY_STORE);
+    return `/api/homepage?${params.toString()}`;
+  }
+  const params = new URLSearchParams({ q, limit: String(PAGE_SIZE), offset: String(baseOffset) });
+  if (SHOPIFY_STORE) params.set("store", SHOPIFY_STORE);
+  return `/api/search?${params.toString()}`;
+}
+
+async function loadProducts({ reset }) {
+  if (reset) {
+    offset = 0;
+    allProducts = [];
+  }
+  statusBar.textContent = "Loading…";
+  errorState.style.display = "none";
+
+  try {
+    const res = await fetch(buildUrl(offset));
+    const data = await res.json();
+
+    if (!res.ok) {
+      throw new Error(data.error || "Request failed");
+    }
+
+    const incoming = data.products || [];
+    if (reset) {
+      allProducts = incoming;
+    } else {
+      const seen = new Set(allProducts.map((p) => p.source + p.title + p.price));
+      for (const p of incoming) {
+        const key = p.source + p.title + p.price;
+        if (!seen.has(key)) {
+          allProducts.push(p);
+          seen.add(key);
+        }
+      }
+    }
+    offset += PAGE_SIZE;
+
+    renderAll();
+    statusBar.textContent = `Showing ${allProducts.length} products` +
+      (data.errors ? ` — some sources failed: ${data.errors.map((e) => e.source).join(", ")}` : "");
+  } catch (err) {
+    errorState.style.display = "block";
+    errorState.textContent = `Couldn't load products: ${err.message}. Check that the backend's EBAY_CLIENT_ID/SECRET are set.`;
+    statusBar.textContent = "";
+  }
+}
+
+// ---- Event wiring (all buttons actually do something) ----
+document.getElementById("search-btn").addEventListener("click", () => {
+  currentQuery = document.getElementById("search-input").value.trim();
+  isHomepageMode = !currentQuery && !currentCategory;
+  loadProducts({ reset: true });
+});
+
+document.getElementById("search-input").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") document.getElementById("search-btn").click();
+});
+
+document.getElementById("category-select").addEventListener("change", (e) => {
+  currentCategory = e.target.value;
+  currentQuery = "";
+  document.getElementById("search-input").value = "";
+  isHomepageMode = !currentCategory;
+  loadProducts({ reset: true });
+});
+
+document.getElementById("sort-select").addEventListener("change", (e) => {
+  currentSort = e.target.value;
+  renderAll();
+});
+
+document.getElementById("refresh-btn").addEventListener("click", () => {
+  loadProducts({ reset: true });
+});
+
+document.getElementById("load-more-btn").addEventListener("click", () => {
+  loadProducts({ reset: false });
+});
+
+// Initial load: homepage feed, 200+ products, no search needed.
+loadProducts({ reset: true });
+</script>
+</body>
+</html>
